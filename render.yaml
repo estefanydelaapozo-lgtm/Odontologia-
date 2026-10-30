@@ -1,64 +1,97 @@
-# Blueprint SIGO Dental (misma estructura que multicatalogo: db + api + web)
-# Va en la RAÍZ del repo (junto a backend/ y frontend/).
-
-databases:
-  - name: odontologia-db
-    databaseName: sigo_dental
-    user: sigo
-    plan: free          # la DB gratis de Render caduca a los 30 días
-
 services:
-  # ---------- API (Go + Fiber, Docker) ----------
   - type: web
-    name: odontologia-api
+    name: sigo-dental
     runtime: docker
-    rootDir: backend
     dockerfilePath: ./Dockerfile
-    plan: free
+    dockerContext: .
+    plan: starter
     healthCheckPath: /api/health
     envVars:
+      - key: PORT
+        value: "10000"
+      - key: BACKEND_PORT
+        value: "3000"
       - key: DATABASE_URL
         fromDatabase:
-          name: odontologia-db
+          name: sigo-dental-db
           property: connectionString
+      - key: DB_MAX_OPEN_CONNS
+        value: "50"
+      - key: DB_MAX_IDLE_CONNS
+        value: "10"
       - key: JWT_SECRET
-        generateValue: true          # >= 32 caracteres
+        generateValue: true
       - key: DATA_ENCRYPTION_KEY
-        sync: false                  # pegar: openssl rand -base64 32
-      - key: ADMIN_EMAIL
-        sync: false
-      - key: ADMIN_PASSWORD
         sync: false
       - key: FRONTEND_ORIGIN
-        sync: false                  # https://odontologia-web.onrender.com (sin "/" final)
-      - key: ENABLE_DEMO_USERS
-        value: "false"
-      - key: ENABLE_DEMO_DATA
-        value: "false"
-      - key: CLINIC_TZ
-        value: America/Guayaquil
+        value: "*"
       - key: CLINICAL_STORAGE_DIR
-        value: /app/var/clinical
-      - key: DB_MAX_OPEN_CONNS
-        value: "20"
-      - key: DB_MAX_IDLE_CONNS
-        value: "5"
+        value: "/app/var/clinical"
+      - key: CLINICAL_NOTE_EDIT_HOURS
+        value: "24"
+      - key: ENABLE_DEMO_USERS
+        value: "true"
+      - key: ENABLE_DEMO_DATA
+        value: "true"
+      - key: CLINIC_TZ
+        value: "America/Guayaquil"
+      - key: ADMIN_EMAIL
+        value: "admin@odontologia.local"
+      - key: ADMIN_PASSWORD
+        value: "123456"
+      - key: SMTP_HOST
+        sync: false
+      - key: SMTP_PORT
+        value: "587"
+      - key: SMTP_USERNAME
+        sync: false
+      - key: SMTP_PASSWORD
+        sync: false
+      - key: SMTP_FROM
+        sync: false
+      - key: SMTP_TIMEOUT_SECONDS
+        value: "10"
       - key: REMINDER_CHANNEL
-        value: whatsapp
+        value: "email"
       - key: CONSENT_OTP_CHANNEL
-        value: email
+        value: "email"
+      - key: MESSAGING_API_URL
+        sync: false
+      - key: MESSAGING_API_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_ACCESS_TOKEN
+        sync: false
+      - key: WHATSAPP_TEMPLATE_NAME
+        sync: false
+      - key: WHATSAPP_TEMPLATE_LANGUAGE
+        value: "es"
+      - key: WHATSAPP_API_VERSION
+        value: "v21.0"
+      - key: TWILIO_ACCOUNT_SID
+        sync: false
+      - key: TWILIO_AUTH_TOKEN
+        sync: false
+      - key: TWILIO_FROM_NUMBER
+        sync: false
+      - key: FISCAL_API_URL
+        sync: false
+      - key: FISCAL_API_TOKEN
+        sync: false
+      - key: PAYMENT_API_URL
+        sync: false
+      - key: PAYMENT_API_TOKEN
+        sync: false
+      - key: PAYMENT_WEBHOOK_SECRET
+        sync: false
+    disk:
+      name: sigo-dental-files
+      mountPath: /app/var/clinical
+      sizeGB: 1
 
-  # ---------- Web (React + Vite, Static Site) ----------
-  - type: web
-    name: odontologia-web
-    runtime: static
-    rootDir: frontend
-    buildCommand: npm ci && npm run build
-    staticPublishPath: dist
-    envVars:
-      - key: VITE_API_URL
-        sync: false                  # https://odontologia-api.onrender.com/api
-    routes:
-      - type: rewrite
-        source: /*
-        destination: /index.html
+databases:
+  - name: sigo-dental-db
+    databaseName: sigo_dental
+    user: sigo
+    plan: 0.1c-256mb

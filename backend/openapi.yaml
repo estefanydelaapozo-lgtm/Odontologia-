@@ -1,0 +1,290 @@
+openapi: 3.0.3
+info:
+  title: SIGO Dental API
+  version: 1.0.0
+  description: API del sistema odontológico. Las rutas clínicas y financieras requieren JWT, rol autorizado y MFA confirmado.
+servers:
+  - url: http://localhost:3000/api
+    description: Desarrollo local
+security:
+  - bearerAuth: []
+paths:
+  /health:
+    get:
+      security: []
+      summary: Estado de la API y PostgreSQL
+      responses:
+        '200': { description: Servicio disponible }
+        '503': { description: Base de datos no disponible }
+  /auth/login:
+    post:
+      security: []
+      summary: Iniciar sesión o validar TOTP
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, format: email }
+                password: { type: string, minLength: 8 }
+                code: { type: string, description: Código TOTP de seis dígitos cuando MFA ya está activado }
+      responses:
+        '200': { description: JWT o aviso de MFA requerido }
+        '401': { description: Credenciales inválidas }
+  /auth/mfa/setup:
+    post:
+      summary: Crear QR de enrolamiento TOTP para la sesión actual
+      responses:
+        '200': { description: Secreto y QR de enrolamiento }
+  /auth/mfa/confirm:
+    post:
+      summary: Confirmar el enrolamiento MFA
+      responses:
+        '200': { description: Sesión con MFA activado }
+  /patients:
+    get:
+      summary: Buscar y listar pacientes
+      parameters:
+        - in: query
+          name: q
+          schema: { type: string }
+      responses:
+        '200': { description: Expedientes autorizados }
+    post:
+      summary: Crear expediente de paciente
+      responses:
+        '201': { description: Paciente creado }
+  /patients/{id}/odontogram:
+    get:
+      summary: Leer odontograma normalizado
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+        - in: query
+          name: notation
+          schema: { type: string, enum: [FDI, UNIVERSAL], default: FDI }
+        - in: query
+          name: dentition
+          schema: { type: string, enum: [permanente, temporal, mixta] }
+      responses:
+        '200': { description: Piezas dentales y hallazgos }
+    put:
+      summary: Guardar odontograma cifrado
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '200': { description: Odontograma guardado }
+  /patients/{id}/periodontogram:
+    get:
+      summary: Leer la medición periodontal más reciente
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '200': { description: Seis sitios por pieza, NIC, furca, movilidad y sangrado }
+    post:
+      summary: Guardar medición periodontal cifrada
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '201': { description: Medición guardada }
+  /patients/{id}/clinical-notes:
+    get:
+      summary: Listar notas SOEP descifradas para personal autorizado
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '200': { description: Notas y firmas }
+    post:
+      summary: Crear nota SOEP
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '201': { description: Borrador creado }
+  /patients/{id}/consents:
+    get:
+      summary: Listar consentimientos y estado de firma
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '200': { description: Consentimientos del paciente }
+    post:
+      summary: Crear consentimiento desde una versión de plantilla
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '201': { description: Consentimiento pendiente }
+  /patients/{id}/treatment-plans:
+    get:
+      summary: Listar planes y procedimientos
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '200': { description: Planes del paciente }
+    post:
+      summary: Crear y presentar presupuesto por fases y sesiones
+      parameters:
+        - $ref: '#/components/parameters/PatientId'
+      responses:
+        '201': { description: Plan presentado }
+  /treatment-plans/{id}/approve:
+    post:
+      summary: Registrar aprobación presencial de ítems seleccionados
+      responses:
+        '200': { description: Aprobación parcial o total }
+  /treatments/perform:
+    post:
+      summary: Registrar procedimiento firmado, cobrar y descontar receta de inventario
+      responses:
+        '201': { description: Procedimiento, factura y consumo creados }
+  /appointments:
+    get:
+      summary: Consultar citas por periodo local de clínica (máximo 92 días)
+      parameters:
+        - in: query
+          name: from
+          schema: { type: string, format: date }
+          description: Fecha inicial inclusiva en zona horaria de la clínica
+        - in: query
+          name: to
+          schema: { type: string, format: date }
+          description: Fecha final inclusiva en zona horaria de la clínica
+      responses:
+        '200': { description: Agenda clínica; filtra entre las fechas solicitadas }
+        '400': { description: Rango de fechas inválido }
+    post:
+      summary: Reservar sillón y profesional sin solapamiento; encola confirmación cifrada con consentimiento del paciente
+      responses:
+        '201': { description: Cita creada }
+  /invoices:
+    get:
+      summary: Listar facturas, pagos y estado fiscal
+      responses:
+        '200': { description: Facturas }
+    post:
+      summary: Crear cobro y encolar emisión si hay proveedor fiscal configurado
+      responses:
+        '201': { description: Cobro creado }
+  /invoices/{id}/payments:
+    post:
+      summary: Registrar pago parcial o mixto
+      responses:
+        '201': { description: Pago registrado }
+  /invoices/{id}/payment-intents:
+    post:
+      summary: Crear o recuperar un enlace de pago en línea
+      responses:
+        '201': { description: Intento y checkout creados }
+        '503': { description: Proveedor de pagos no configurado }
+  /payment-gateway/webhook:
+    post:
+      security: []
+      summary: Recibir evento de pago firmado con HMAC-SHA256
+      responses:
+        '200': { description: Evento aplicado o repetido }
+        '401': { description: Firma inválida }
+  /cash/open:
+    post:
+      summary: Abrir caja con fondo inicial
+      responses:
+        '201': { description: Caja abierta }
+  /cash/close:
+    post:
+      summary: Enviar conteo físico y cerrar ciegamente la caja
+      responses:
+        '200': { description: Conteo, recaudación esperada y diferencia revelados tras el conteo }
+  /inventory:
+    get:
+      summary: Consultar existencias y mínimos
+      responses:
+        '200': { description: Inventario }
+    post:
+      summary: Crear producto y stock inicial
+      responses:
+        '201': { description: Producto creado }
+  /settlements:
+    get:
+      summary: Consultar liquidaciones de honorarios
+      responses:
+        '200': { description: Liquidaciones }
+    post:
+      summary: Liquidar procedimientos completados usando la regla vigente
+      responses:
+        '201': { description: Liquidación creada }
+  /patients/{id}/record:
+    get:
+      summary: Expediente unificado del paciente (auditado; ?export=1 descarga JSON y se audita como exportación)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }, { in: query, name: export, schema: { type: string, enum: ['1'] } }]
+      responses: { '200': { description: Historial completo }, '404': { description: Paciente no encontrado } }
+  /audit-log:
+    get:
+      summary: Consulta del registro de auditoría (admin, auditor)
+      parameters:
+        - { in: query, name: usuario, schema: { type: string } }
+        - { in: query, name: accion, schema: { type: string } }
+        - { in: query, name: entidad, schema: { type: string } }
+        - { in: query, name: desde, schema: { type: string, format: date } }
+        - { in: query, name: hasta, schema: { type: string, format: date } }
+        - { in: query, name: limit, schema: { type: integer, maximum: 1000 } }
+      responses: { '200': { description: Eventos } }
+  /reports/{kind}:
+    get:
+      summary: Reportes (patients, appointments, income, treatments, inventory); ?format=csv exporta y audita
+      parameters:
+        - { in: path, name: kind, required: true, schema: { type: string, enum: [patients, appointments, income, treatments, inventory] } }
+        - { in: query, name: desde, schema: { type: string, format: date } }
+        - { in: query, name: hasta, schema: { type: string, format: date } }
+        - { in: query, name: format, schema: { type: string, enum: [json, csv] } }
+      responses: { '200': { description: Reporte }, '403': { description: Rol sin permiso } }
+  /users/{id}:
+    put:
+      summary: Actualiza nombre, rol y estado de un usuario (admin)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [full_name, role, active], properties: { full_name: { type: string }, role: { type: string }, active: { type: boolean } } } } } }
+      responses: { '200': { description: Actualizado } }
+  /users/{id}/reset-password:
+    post:
+      summary: Restablece la contraseña (mínimo 8 caracteres, bcrypt) (admin)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }]
+      responses: { '200': { description: Contraseña cambiada } }
+  /users/{id}/reset-mfa:
+    post:
+      summary: Restablece el MFA de un usuario (admin)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }]
+      responses: { '200': { description: MFA restablecido } }
+  /professional-fee-rules:
+    get:
+      summary: Lista reglas de honorarios (admin, auditor)
+      responses: { '200': { description: Reglas } }
+  /professional-fee-rules/{id}:
+    delete:
+      summary: Desactiva una regla de honorarios (admin)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }]
+      responses: { '200': { description: Desactivada } }
+  /inventory/movements:
+    get:
+      summary: Historial inmutable de movimientos de inventario
+      responses: { '200': { description: Movimientos } }
+  /notifications:
+    get:
+      summary: Estado de notificaciones y recordatorios (destino enmascarado)
+      responses: { '200': { description: Notificaciones } }
+  /appointments/{id}:
+    put:
+      summary: Reprograma una cita programada o confirmada validando sillón y profesional (RN-03)
+      parameters: [{ $ref: '#/components/parameters/PatientId' }]
+      requestBody: { required: true, content: { application/json: { schema: { type: object, required: [starts_at, ends_at, professional_id, chair_id], properties: { starts_at: { type: string, format: date-time }, ends_at: { type: string, format: date-time }, professional_id: { type: integer }, chair_id: { type: integer }, notes: { type: string } } } } } }
+      responses: { '200': { description: Reprogramada }, '409': { description: Horario ocupado } }
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    PatientId:
+      in: path
+      name: id
+      required: true
+      schema: { type: integer, format: int64 }

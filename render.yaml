@@ -1,0 +1,64 @@
+# Blueprint SIGO Dental (misma estructura que multicatalogo: db + api + web)
+# Va en la RAÍZ del repo (junto a backend/ y frontend/).
+
+databases:
+  - name: odontologia-db
+    databaseName: sigo_dental
+    user: sigo
+    plan: free          # la DB gratis de Render caduca a los 30 días
+
+services:
+  # ---------- API (Go + Fiber, Docker) ----------
+  - type: web
+    name: odontologia-api
+    runtime: docker
+    rootDir: backend
+    dockerfilePath: ./Dockerfile
+    plan: free
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: odontologia-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true          # >= 32 caracteres
+      - key: DATA_ENCRYPTION_KEY
+        sync: false                  # pegar: openssl rand -base64 32
+      - key: ADMIN_EMAIL
+        sync: false
+      - key: ADMIN_PASSWORD
+        sync: false
+      - key: FRONTEND_ORIGIN
+        sync: false                  # https://odontologia-web.onrender.com (sin "/" final)
+      - key: ENABLE_DEMO_USERS
+        value: "false"
+      - key: ENABLE_DEMO_DATA
+        value: "false"
+      - key: CLINIC_TZ
+        value: America/Guayaquil
+      - key: CLINICAL_STORAGE_DIR
+        value: /app/var/clinical
+      - key: DB_MAX_OPEN_CONNS
+        value: "20"
+      - key: DB_MAX_IDLE_CONNS
+        value: "5"
+      - key: REMINDER_CHANNEL
+        value: whatsapp
+      - key: CONSENT_OTP_CHANNEL
+        value: email
+
+  # ---------- Web (React + Vite, Static Site) ----------
+  - type: web
+    name: odontologia-web
+    runtime: static
+    rootDir: frontend
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    envVars:
+      - key: VITE_API_URL
+        sync: false                  # https://odontologia-api.onrender.com/api
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
